@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	redis_db "github.com/AtaullinShamil/telegram_helpdesk_bot_go/pkg/redis"
+	"github.com/go-redis/redis/v8"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -35,7 +37,13 @@ func (p *RequestProcessor) handleNew(inputMessage *tgbotapi.Message) {
 	}
 
 	id := inputMessage.From.ID
-	p.Db[id] = Request{UserId: id, ChatId: inputMessage.Chat.ID}
+	idStr := strconv.Itoa(int(inputMessage.From.ID))
+
+	err = redis_db.SaveRequest(p.RedisClient, idStr, redis_db.Request{UserId: id, ChatId: inputMessage.Chat.ID})
+	if err != nil {
+		log.Printf("Error save data: %v", err)
+		return
+	}
 }
 
 func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
@@ -45,10 +53,20 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 	switch action {
 	case "support":
 		id := callback.From.ID
-		val := p.Db[id]
-		val.Department = "Support"
-		val.Status.IsDepartment = true
-		p.Db[id] = val
+		idStr := strconv.Itoa(int(id))
+
+		retrievedRequest, err := redis_db.GetRequest(p.RedisClient, idStr)
+		if err != nil {
+			log.Printf("Error get data: %v", err)
+			return
+		}
+		retrievedRequest.Department = "Support"
+		retrievedRequest.Status.IsDepartment = true
+		err = redis_db.SaveRequest(p.RedisClient, idStr, retrievedRequest)
+		if err != nil {
+			log.Printf("Error save data: %v", err)
+			return
+		}
 
 		chatID := callback.Message.Chat.ID
 
@@ -79,10 +97,20 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 
 	case "it":
 		id := callback.From.ID
-		val := p.Db[id]
-		val.Department = "IT"
-		val.Status.IsDepartment = true
-		p.Db[id] = val
+		idStr := strconv.Itoa(int(id))
+
+		retrievedRequest, err := redis_db.GetRequest(p.RedisClient, idStr)
+		if err != nil {
+			log.Printf("Error get data: %v", err)
+			return
+		}
+		retrievedRequest.Department = "IT"
+		retrievedRequest.Status.IsDepartment = true
+		err = redis_db.SaveRequest(p.RedisClient, idStr, retrievedRequest)
+		if err != nil {
+			log.Printf("Error save data: %v", err)
+			return
+		}
 
 		chatID := callback.Message.Chat.ID
 
@@ -112,10 +140,20 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 		}
 	case "billing":
 		id := callback.From.ID
-		val := p.Db[id]
-		val.Department = "Billing"
-		val.Status.IsDepartment = true
-		p.Db[id] = val
+		idStr := strconv.Itoa(int(id))
+
+		retrievedRequest, err := redis_db.GetRequest(p.RedisClient, idStr)
+		if err != nil {
+			log.Printf("Error get data: %v", err)
+			return
+		}
+		retrievedRequest.Department = "Billing"
+		retrievedRequest.Status.IsDepartment = true
+		err = redis_db.SaveRequest(p.RedisClient, idStr, retrievedRequest)
+		if err != nil {
+			log.Printf("Error save data: %v", err)
+			return
+		}
 
 		chatID := callback.Message.Chat.ID
 
@@ -157,8 +195,13 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 		}
 
 		id := callback.From.ID
-		val, ok := p.Db[id]
-		if !ok {
+		idStr := strconv.Itoa(int(id))
+		val, err := redis_db.GetRequest(p.RedisClient, idStr)
+		if err != nil && err != redis.Nil {
+			log.Printf("Error get data: %v", err)
+			return
+		}
+		if err == redis.Nil {
 			msg := tgbotapi.NewMessage(chatID, "There isn't ticket")
 			_, err := p.Bot.Send(msg)
 			if err != nil {
@@ -174,8 +217,12 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 			return
 		}
 
-		delete(p.Db, id)
-		p.OpenTicketsDb[id] = val //add postgres
+		//Here should be save data to postgres
+		err = redis_db.DeleteRequest(p.RedisClient, idStr)
+		if err != nil {
+			log.Printf("Error delete data: %v", err)
+			return
+		}
 
 		adminMsg := tgbotapi.NewMessage(p.admins[val.Department], fmt.Sprintf("UserID : %d\nDepartment : %s\nTitle : %s\nDiscription: %s", val.UserId, val.Department, val.Tittle, val.Discription))
 		inlineKey := &tgbotapi.InlineKeyboardMarkup{
@@ -203,8 +250,13 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 		}
 
 		id := callback.From.ID
-		_, ok := p.Db[id]
-		if !ok {
+		idStr := strconv.Itoa(int(id))
+		_, err = redis_db.GetRequest(p.RedisClient, idStr)
+		if err != nil && err != redis.Nil {
+			log.Printf("Error get data: %v", err)
+			return
+		}
+		if err == redis.Nil {
 			msg := tgbotapi.NewMessage(chatID, "There isn't ticket")
 			_, err := p.Bot.Send(msg)
 			if err != nil {
@@ -213,7 +265,12 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 			}
 			return
 		}
-		delete(p.Db, id)
+
+		err = redis_db.DeleteRequest(p.RedisClient, idStr)
+		if err != nil {
+			log.Printf("Error delete data: %v", err)
+			return
+		}
 		msg := tgbotapi.NewMessage(chatID, "Ticket deleted")
 		_, err = p.Bot.Send(msg)
 		if err != nil {
@@ -265,8 +322,14 @@ func (p *RequestProcessor) handleMessages(inputMessage *tgbotapi.Message) {
 		}
 		return
 	}
-	val, ok := p.Db[id]
-	if !ok {
+
+	idStr := strconv.Itoa(int(id))
+	val, err := redis_db.GetRequest(p.RedisClient, idStr)
+	if err != nil && err != redis.Nil {
+		log.Printf("Error get data: %v", err)
+		return
+	}
+	if err == redis.Nil {
 		msg := tgbotapi.NewMessage(inputMessage.Chat.ID, "Please, use command /new for create a ticket")
 		_, err := p.Bot.Send(msg)
 		if err != nil {
@@ -278,7 +341,11 @@ func (p *RequestProcessor) handleMessages(inputMessage *tgbotapi.Message) {
 	if !val.Status.IsTittle {
 		val.Tittle = inputMessage.Text
 		val.Status.IsTittle = true
-		p.Db[id] = val
+		err = redis_db.SaveRequest(p.RedisClient, idStr, val)
+		if err != nil {
+			log.Printf("Error save data: %v", err)
+			return
+		}
 		msg := tgbotapi.NewMessage(inputMessage.Chat.ID, "Please, write Discription")
 		_, err := p.Bot.Send(msg)
 		if err != nil {
@@ -290,7 +357,11 @@ func (p *RequestProcessor) handleMessages(inputMessage *tgbotapi.Message) {
 	if !val.Status.IsDiscription {
 		val.Discription = inputMessage.Text
 		val.Status.IsDiscription = true
-		p.Db[id] = val
+		err = redis_db.SaveRequest(p.RedisClient, idStr, val)
+		if err != nil {
+			log.Printf("Error save data: %v", err)
+			return
+		}
 
 		msg := tgbotapi.NewMessage(inputMessage.Chat.ID, fmt.Sprintf("Your ticket created :\n\nDepartment : %s\nTittle : %s\nDiscription : %s\n", val.Department, val.Tittle, val.Discription))
 		_, err := p.Bot.Send(msg)

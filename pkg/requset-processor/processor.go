@@ -1,21 +1,22 @@
 package requst_processor
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 
+	"github.com/go-redis/redis/v8"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type RequestProcessor struct {
-	Bot *tgbotapi.BotAPI
+	Bot         *tgbotapi.BotAPI
+	RedisClient *redis.Client
+	Ctx         context.Context
 
 	admins    map[string]int64
 	passwords map[string]string
-
-	Db            map[int64]Request
-	OpenTicketsDb map[int64]Request
 }
 
 func NewRequestProcessor() (*RequestProcessor, error) {
@@ -31,6 +32,22 @@ func NewRequestProcessor() (*RequestProcessor, error) {
 		return nil, err
 	}
 	Processor.Bot = bot
+
+	redisAddr, exists := os.LookupEnv("REDISADDR")
+	if !exists {
+		return nil, fmt.Errorf("there isn't bot token env")
+	}
+
+	Processor.RedisClient = redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+	})
+
+	pong, err := Processor.RedisClient.Ping(context.Background()).Result()
+	if err != nil {
+		return nil, fmt.Errorf("db connection error")
+	} else {
+		fmt.Println("Db connection success:", pong)
+	}
 
 	Processor.admins = map[string]int64{
 		"Support": 0,
@@ -58,10 +75,6 @@ func NewRequestProcessor() (*RequestProcessor, error) {
 		"IT":      itPassword,
 		"Billing": billingPassword,
 	}
-
-	Processor.Db = make(map[int64]Request, 0)
-	Processor.OpenTicketsDb = make(map[int64]Request, 0)
-
 	return Processor, nil
 }
 
