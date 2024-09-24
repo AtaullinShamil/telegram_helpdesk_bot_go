@@ -10,7 +10,12 @@ import (
 
 type RequestProcessor struct {
 	Bot *tgbotapi.BotAPI
-	Db  map[int64]Request
+
+	admins    map[string]int64
+	passwords map[string]string
+
+	Db            map[int64]Request
+	OpenTicketsDb map[int64]Request
 }
 
 func NewRequestProcessor() (*RequestProcessor, error) {
@@ -27,7 +32,35 @@ func NewRequestProcessor() (*RequestProcessor, error) {
 	}
 	Processor.Bot = bot
 
+	Processor.admins = map[string]int64{
+		"Support": 0,
+		"IT":      0,
+		"Billing": 0,
+	}
+
+	supportPassword, exists := os.LookupEnv("SUPPORTPASSWORD")
+	if !exists {
+		return nil, fmt.Errorf("there isn't bot token env")
+	}
+
+	itPassword, exists := os.LookupEnv("ITPASSWORD")
+	if !exists {
+		return nil, fmt.Errorf("there isn't bot token env")
+	}
+
+	billingPassword, exists := os.LookupEnv("BILLINGPASSWORD")
+	if !exists {
+		return nil, fmt.Errorf("there isn't bot token env")
+	}
+
+	Processor.passwords = map[string]string{
+		"Support": supportPassword,
+		"IT":      itPassword,
+		"Billing": billingPassword,
+	}
+
 	Processor.Db = make(map[int64]Request, 0)
+	Processor.OpenTicketsDb = make(map[int64]Request, 0)
 
 	return Processor, nil
 }
