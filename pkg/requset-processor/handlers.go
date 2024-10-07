@@ -295,7 +295,7 @@ func (p *RequestProcessor) handleCallback(callback *tgbotapi.CallbackQuery) {
 			return
 		}
 
-		msg := tgbotapi.NewMessage(int64(chatId), "Hello world")
+		msg := tgbotapi.NewMessage(int64(chatId), "Your ticket has been resolved")
 		_, err = p.Bot.Send(msg)
 		if err != nil {
 			log.Printf("Error send message: %v", err)
